@@ -78,7 +78,7 @@ function parseDate(val) {
 }
 
 // ─── FILE PARSER ──────────────────────────────────────────────────────────────
-function parseFile(file, owner) {
+function parseFile(file, owner, cardType) {
   return new Promise((resolve,reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -95,13 +95,32 @@ function parseFile(file, owner) {
           const cols = guessColumns(headers);
           if (!cols.amount) return;
           rows.slice(hdrIdx+1).forEach((row,ri) => {
-            const amount = parseAmount(row[headers.indexOf(cols.amount)]);
-            if (!amount||amount<=0) return;
-            const date = parseDate(cols.date?row[headers.indexOf(cols.date)]:null);
-            const desc = cols.desc?String(row[headers.indexOf(cols.desc)]??"").trim():"";
-            const cat = smartCategory(desc);
+            let amount = parseAmount(row[headers.indexOf(cols.amount)]);
+            if (amount === null || amount === 0) return;
+            
+            // 1. Align signs: Make Expenses (+) and Payments/Refunds (-)
+            //if (cardType == "Chase") {
+             // amount = amount * -1;
+            //}
+            
+            const desc = cols.desc ? String(row[headers.indexOf(cols.desc)] ?? "").trim() : "";
+            
+            // --- NEW REPLACEMENT START ---
+            // Explicitly mark credits as negative based on keywords
+            const isCreditOrPayment = /payment|thank you|mobile pmt|directdep|redemption|refund|cashback/i.test(desc);
+            if (isCreditOrPayment && amount > 0) {
+              amount = amount * -1;
+            }
+            // --- NEW REPLACEMENT END ---
+            
+            // 2. DISCRETE PAYMENTS: Detect card payments and categorize them separately
+            const isPayment = /payment|thank you|mobile pmt|directdep/i.test(desc);
+            const cat = isPayment ? "Finance & Fees" : smartCategory(desc);
+
+            const date = parseDate(cols.date ? row[headers.indexOf(cols.date)] : null);
             all.push({
-              id:`${file.name}-${sn}-${ri}`, source:file.name.replace(/\.[^.]+$/,""),
+              id:`${file.name}-${sn}-${ri}`, 
+              source: cardType, // Stores "Standard" or "Chase"
               owner, date:date||new Date(), amount, description:desc, category:cat,
               splitType: SHARED_CATS.includes(cat)?"shared":"personal"
             });
@@ -204,6 +223,7 @@ export default function App() {
   const [showRules,setShowRules]=useState(false);
   const [uploadOwner,setUploadOwner]=useState(PERSON_A.name);
   const [showUploadModal,setShowUploadModal]=useState(false);
+  const [uploadCard, setUploadCard] = useState("Standard");
   const [splitPct,setSplitPct]=useState({K:50,T:50});
   const [showSplitModal,setShowSplitModal]=useState(false);
   const [budgets,setBudgets]=useState({});
@@ -221,30 +241,81 @@ export default function App() {
   const [ghStatus,setGhStatus]=useState("");
   const [showGhPanel,setShowGhPanel]=useState(false);
   const [ghSyncing,setGhSyncing]=useState(false);
+  const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+
+  const handleSort = (key) => {
+    let direction = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   // DERIVED
-  const filtered=useMemo(()=>transactions.filter(t=>{
-    if(filterOwner!=="All"&&t.owner!==filterOwner)return false;
-    if(filterCat!=="All"&&t.category!==filterCat)return false;
-    if(search&&!t.description.toLowerCase().includes(search.toLowerCase()))return false;
-    return true;
-  }),[transactions,filterCat,filterOwner,search]);
-  const totalSpend=useMemo(()=>filtered.reduce((s,t)=>s+t.amount,0),[filtered]);
-  const catTotals=useMemo(()=>{
-    const m={};filtered.forEach(t=>{m[t.category]=(m[t.category]||0)+t.amount;});
-    return Object.entries(m).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
-  },[filtered]);
+  const [dateRange, setDateRange] = useState("All");
+  const filtered=useMemo(() => {
+    const result = transactions.filter(t => {
+      // If you want to hide payments from the UI list entirely:
+      // if(t.category === "Finance & Fees") return false; 
+      
+      if(filterOwner!=="All"&&t.owner!==filterOwner)return false;
+      
+      if(filterCat!=="All"&&t.category!==filterCat)return false;
+      if(search&&!t.description.toLowerCase().includes(search.toLowerCase()))return false;
+      
+      if (dateRange !== "All") {
+        const now = new Date();
+        let start = null;
+        if (dateRange === "1M") start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        if (dateRange === "3M") start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        if (dateRange === "6M") start = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+        if (dateRange === "1Y") start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        if (start && t.date < start) return false;
+      }
+      return true;
+    });
+
+    return result.sort((a, b) => {
+      let aVal = a[sortConfig.key];
+      let bVal = b[sortConfig.key];
+      
+      if (sortConfig.key === 'date') {
+        aVal = a.date.getTime();
+        bVal = b.date.getTime();
+      }
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [transactions, filterCat, filterOwner, search, dateRange, sortConfig]);
+  const totalSpend = useMemo(() => 
+    filtered
+      .filter(t => t.category !== "Finance & Fees") // Remove payments/fees
+      .reduce((s, t) => s + t.amount, 0), 
+  [filtered]);
+  const catTotals = useMemo(() => {
+    const m = {};
+    filtered
+      .filter(t => t.category !== "Finance & Fees") // Ignore payments in charts
+      .forEach(t => {
+        m[t.category] = (m[t.category] || 0) + t.amount;
+      });
+    return Object.entries(m)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filtered]);
   const monthlyData=useMemo(()=>{
     const m={};
     filtered.forEach(t=>{
-      const k=`${t.date.getFullYear()}-${String(t.date.getMonth()).padStart(2,"0")}`;
-      if(!m[k])m[k]={month:`${MONTHS[t.date.getMonth()]} ${t.date.getFullYear()}`,total:0,kadambari:0,tejas:0,...Object.fromEntries(CATEGORIES.map(c=>[c,0]))};
+      const k=`${t.date.getFullYear()}-${String(t.date.getMonth()+1).padStart(2,"0")}`;
+      if(!m[k])m[k]={month:`${MONTHS[t.date.getMonth()]} ${t.date.getFullYear()}`,sortKey: new Date(t.date.getFullYear(), t.date.getMonth(), 1).getTime(),total:0,kadambari:0,tejas:0,...Object.fromEntries(CATEGORIES.map(c=>[c,0]))};
       m[k].total+=t.amount;
       if(t.owner===PERSON_A.name)m[k].kadambari+=t.amount;
       if(t.owner===PERSON_B.name)m[k].tejas+=t.amount;
       m[k][t.category]=(m[k][t.category]||0)+t.amount;
     });
-    return Object.values(m).sort((a,b)=>a.month<b.month?-1:1);
+    return Object.values(m).sort((a,b)=>a.sortKey - b.sortKey);
   },[filtered]);
   const topMerchants=useMemo(()=>{
     const m={};
@@ -267,10 +338,10 @@ export default function App() {
   const isEmpty=transactions.length===0;
 
   // HANDLERS
-  const doFiles=useCallback(async(files,owner)=>{
+  const doFiles=useCallback(async(files,owner,cardType)=>{
     setLoading(true);
     try{
-      const results=await Promise.all([...files].map(f=>parseFile(f,owner)));
+      const results=await Promise.all([...files].map(f=>parseFile(f,owner,cardType)));
       const merged=results.flat();
       setTransactions(prev=>{
         const ids=new Set(prev.map(t=>t.id));
@@ -283,7 +354,10 @@ export default function App() {
     }catch(e){alert("Error: "+e.message);}
     setLoading(false);
   },[customRules]);
-  const handleDrop=useCallback((e,owner)=>{e.preventDefault();doFiles(e.dataTransfer.files,owner);},[doFiles]);
+  const handleDrop=useCallback((e,owner)=>{
+    e.preventDefault();
+    doFiles(e.dataTransfer.files, owner, uploadCard);
+  },[doFiles, uploadCard]);
   const addRule=()=>{const kw=newKw.trim().toLowerCase();if(!kw)return;setCustomRules(p=>[{keyword:kw,category:newCat},...p]);setTransactions(p=>p.map(t=>t.description.toLowerCase().includes(kw)?{...t,category:newCat}:t));setNewKw("");};
   const removeRule=(i)=>setCustomRules(p=>p.filter((_,j)=>j!==i));
   const updateCategory=(id,cat)=>{setTransactions(p=>p.map(t=>t.id===id?{...t,category:cat}:t));setEditId(null);};
@@ -315,7 +389,7 @@ export default function App() {
 
   const openFilePicker=(owner)=>{
     const inp=document.createElement("input");inp.type="file";inp.accept=".xlsx,.xls,.csv";inp.multiple=true;
-    inp.onchange=e=>{doFiles(e.target.files,owner);setShowUploadModal(false);};inp.click();
+    inp.onchange=e=>{doFiles(e.target.files,owner,uploadCard);setShowUploadModal(false);};inp.click();
   };
 
   const invItems=[
@@ -372,24 +446,42 @@ export default function App() {
       {showUploadModal&&(
         <div className="modal-bg" onClick={()=>setShowUploadModal(false)}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Upload Card Bills</div>
-            <div style={{color:"#6B7280",fontSize:12,marginBottom:18}}>Choose whose card statement you're uploading. Files will be auto-tagged to that person.</div>
-            <div className="g2" style={{marginBottom:18}}>
-              {[PERSON_A,PERSON_B].map(p=>(
-                <div key={p.name} className={`dz${uploadOwner===p.name?" active":""}`}
-                  style={{borderColor:uploadOwner===p.name?p.color:undefined,background:uploadOwner===p.name?`${p.color}18`:undefined}}
-                  onClick={()=>setUploadOwner(p.name)}>
-                  <div style={{width:42,height:42,borderRadius:"50%",background:p.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,margin:"0 auto 8px"}}>{p.short}</div>
-                  <div style={{fontWeight:600,fontSize:14,color:uploadOwner===p.name?p.color:"#9CA3AF"}}>{p.name}</div>
-                  <div style={{fontSize:11,color:"#4B5563",marginTop:3}}>Click to select</div>
-                </div>
-              ))}
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button className="btn p" style={{flex:1}} onClick={()=>openFilePicker(uploadOwner)}>📂 Browse Files for {uploadOwner}</button>
-              <button className="btn s" onClick={()=>setShowUploadModal(false)}>Cancel</button>
-            </div>
+        <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Upload Card Bills</div>
+        
+        {/* NEW DROPDOWN SECTION */}
+        <div style={{marginBottom:18, marginTop:12}}>
+          <label style={{fontSize:11, fontWeight:700, color:"#4B5563", textTransform:"uppercase", display:"block", marginBottom:5}}>Statement Format</label>
+          <select 
+            className="inp" 
+            style={{width:"100%", background:"#1A1D26", border:"1px solid #2A3050", color: "#E5E7EB"}}
+            value={uploadCard}
+            onChange={(e) => setUploadCard(e.target.value)}
+          >
+            <option value="Standard">Standard (Amex, Citi, Bilt, Discover)</option>
+            <option value="Chase">Chase (Negative Expenses)</option>
+          </select>
+          <div style={{fontSize: 10, color: "#6B7280", marginTop: 4}}>
+            Standard: Expenses are positive. Chase: Expenses are negative.
           </div>
+        </div>
+
+        <div style={{color:"#6B7280",fontSize:12,marginBottom:18}}>Choose whose card statement you're uploading:</div>
+        <div className="g2" style={{marginBottom:18}}>
+          {[PERSON_A,PERSON_B].map(p=>(
+            <div key={p.name} className={`dz${uploadOwner===p.name?" active":""}`}
+              style={{borderColor:uploadOwner===p.name?p.color:undefined,background:uploadOwner===p.name?`${p.color}18`:undefined}}
+              onClick={()=>setUploadOwner(p.name)}>
+              <div style={{width:42,height:42,borderRadius:"50%",background:p.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,margin:"0 auto 8px"}}>{p.short}</div>
+              <div style={{fontWeight:600,fontSize:14,color:uploadOwner===p.name?p.color:"#9CA3AF"}}>{p.name}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn p" style={{flex:1}} onClick={()=>openFilePicker(uploadOwner)}>📂 Select Files</button>
+          <button className="btn s" onClick={()=>setShowUploadModal(false)}>Cancel</button>
+        </div>
+      </div>
+          
         </div>
       )}
 
@@ -518,6 +610,13 @@ export default function App() {
               </select>
               <select className="inp" value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{width:"auto"}}>
                 <option>All</option>{CATEGORIES.map(c=><option key={c}>{c}</option>)}
+              </select>
+              <select className="inp" value={dateRange} onChange={e=>setDateRange(e.target.value)} style={{width:"auto"}}>
+                <option value="All">All Time</option>
+                <option value="1M">Last 1 Month</option>
+                <option value="3M">Last 3 Months</option>
+                <option value="6M">Last 6 Months</option>
+                <option value="1Y">Last 1 Year</option>
               </select>
               {tab==="Transactions"&&<input className="inp" placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:160}}/>}
               <div style={{marginLeft:"auto",color:"#4B5563",fontSize:11}}>{filtered.length} txns · {[...new Set(transactions.map(t=>t.source))].length} card(s)</div>
@@ -927,9 +1026,31 @@ export default function App() {
                   </div>
                 </div>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                  <thead><tr style={{borderBottom:"1px solid #252A3A"}}>
-                    {["Date","Description","Paid By","Amount","Category","Split",""].map(h=>(
-                      <th key={h} style={{textAlign:h==="Amount"?"right":"left",padding:"7px 10px",color:"#6B7280",fontWeight:600,fontSize:10}}>{h}</th>
+                <thead><tr style={{borderBottom:"1px solid #252A3A"}}>
+                    {[
+                      { label: "Date", key: "date" },
+                      { label: "Description", key: "description" },
+                      { label: "Paid By", key: "owner" },
+                      { label: "Amount", key: "amount" },
+                      { label: "Category", key: "category" },
+                      { label: "Split", key: "splitType" },
+                      { label: "", key: null }
+                    ].map(({ label, key }) => (
+                      <th 
+                        key={label || 'action'} 
+                        style={{
+                          textAlign: label === "Amount" ? "right" : "left", 
+                          padding: "7px 10px", 
+                          color: "#6B7280", 
+                          fontWeight: 600, 
+                          fontSize: 10,
+                          cursor: key ? "pointer" : "default",
+                          userSelect: "none"
+                        }}
+                        onClick={() => key && handleSort(key)}
+                      >
+                        {label} {key && sortConfig.key === key ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ''}
+                      </th>
                     ))}
                   </tr></thead>
                   <tbody>{filtered.slice(0,300).map(t=>(
