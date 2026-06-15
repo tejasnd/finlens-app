@@ -39,15 +39,34 @@ FinLens is a **privacy-first, local-first couple budgeting app**. Import bank tr
 
 ## Features
 
-- **CSV / Excel Upload** — Import transactions from any bank export
-- **Couple / Split Tracking** — Assign transactions to each partner, split shared costs, and see who owes whom
+### Import & data
+
+- **CSV / Excel upload** — Import transactions from any bank export, with column mapping for varied formats
+- **AI categorization** — Server-side LLM categorization (local Ollama by default), run on import or re-run any time on transactions still in "Other"
+- **Custom category rules** — Persisted rules re-apply automatically so a merchant always lands in the right category
+- **Clear all data** — One click wipes local transactions, budgets, rules, and the category cache, and clears the backend RAG index
+
+### Budgeting & analysis (the tabs)
+
+- **Overview** — Spending-by-category breakdown and headline totals at a glance
+- **Transactions** — Searchable, paginated transaction table (100 rows/page) with inline editing and re-categorization
+- **Couple / split tracking** — Assign each transaction to a partner, split shared costs, and see who owes whom (settlement)
+- **Monthly** — Month-over-month spending trend
+- **Categories** — All categories ranked by spend
+- **Budgets** — Per-category budgets with progress tracking
+- **Subscriptions** — Automatic recurring-charge / subscription detection
+- **Planning** — Annual goals, income & 401(k)/Roth IRA/HSA/HYSA/brokerage allocation, savings rate, and forward balance projection
 - **Ask FinLens (RAG)** — Natural-language questions over your data (*"how much did we spend on dining last month?"*) answered by a local retrieve → augment → generate pipeline
-- **AI Categorization** — Server-side LLM categorization (local Ollama by default), run on import or re-run any time on transactions still in "Other"
+
+### AI & integrations
+
 - **Gmail bill search (in-app)** — After a one-time local OAuth, search your inbox for credit-card statements from **Sync & AI Settings**; FinLens lists each bill with its parsed balance, minimum due, and due date
 - **MCP servers + agent** — The same finance + Gmail tools are also exposed over Model Context Protocol, so an LLM agent (or Claude Desktop) can drive them and reconcile bills
-- **Budget & Subscription Tracking** — Per-category budgets and recurring-charge detection
-- **Clear all data** — One click wipes local transactions, budgets, rules, and the category cache, and clears the backend RAG index
-- **Excel Export** and **GitHub Sync** for backup
+
+### Backup
+
+- **Excel export** — Download your data as a formatted spreadsheet
+- **GitHub Sync** — Back up and restore your dataset as a JSON file committed to a GitHub repo (via the Contents API, using your own token)
 
 ---
 

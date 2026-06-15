@@ -41,6 +41,12 @@ uvicorn app.main:app --reload --port 8000
 | POST | `/api/categorize` | Categorize transaction descriptions via the LLM |
 | POST | `/api/index` | Embed + index transactions for RAG (called by the Ask tab) |
 | POST | `/api/query` | Natural-language question → retrieve + augment + generate |
+| DELETE | `/api/transactions` | Clear the RAG index (wipes indexed transactions) |
+| GET | `/api/gmail/status` | Whether `credentials.json` / `token.json` are present |
+| POST | `/api/gmail/credentials` | Save a Google OAuth "Desktop app" client JSON |
+| DELETE | `/api/gmail/credentials` | Remove saved credentials and cached token |
+| POST | `/api/gmail/authorize` | Run the one-time loopback OAuth consent and cache the token |
+| GET | `/api/gmail/bills` | Search Gmail for credit-card statements (`max_results`, `newer_than`) |
 
 ### Examples
 
