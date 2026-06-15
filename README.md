@@ -122,6 +122,15 @@ python mcp_servers/agent_host.py "What did we spend the most on, and are we sett
 
 See [backend/mcp_servers/README.md](backend/mcp_servers/README.md) for the Gmail OAuth setup and Claude Desktop config.
 
+### Deploying the live demo (maintainers)
+
+The demo is the frontend built with Vite's default base path `/finlens-app/` and served from the `gh-pages` branch.
+
+- **Automatic:** every push to `main` triggers [.github/workflows/deploy.yml](.github/workflows/deploy.yml), which builds and publishes `dist/` to `gh-pages`.
+- **Manual:** `npm run deploy` does the same from your machine.
+
+One-time repo setup: **Settings → Pages → Source: Deploy from a branch → `gh-pages` / `root`**. The demo has no backend, so the AI features (Ask/RAG, server-side categorization, Gmail) show a "run it locally" note by design.
+
 ---
 
 ## Privacy

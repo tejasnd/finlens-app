@@ -1,0 +1,43 @@
+name: Deploy demo
+
+# Auto-publishes the frontend to GitHub Pages on every push to main, so the
+# live demo (tejasnd.github.io/finlens-app) stays in sync without running
+# `npm run deploy` by hand. The build uses Vite's default base of
+# `/finlens-app/`, matching the repo name.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+# Let the job push to the gh-pages branch using the built-in token.
+permissions:
+  contents: write
+
+# Never run two deploys at once; cancel an in-flight one if a newer push lands.
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
