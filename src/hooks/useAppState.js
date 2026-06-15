@@ -3,6 +3,8 @@ import { CATEGORIES, MONTHS, DEFAULT_PLAN, SHARED_CATS, TOP_MERCHANTS_COUNT } fr
 import { getLocalState, saveLocalState } from "../utils/storage";
 import { clearCache } from "../utils/categoryCache";
 import { parseFile } from "../services/fileParser";
+import { backendAvailable } from "../services/backendCategorizer";
+import { makeSampleTransactions, SAMPLE_PERSONS } from "../services/sampleData";
 import { billToTransaction } from "../services/gmailBills";
 import { smartCategoryAI, applyCustomRules } from "../utils/categorization";
 import { calcSettlement } from "../services/settlement";
@@ -72,6 +74,16 @@ export function useAppState() {
   // null = idle; object = { done, total, categorized, skipped } during/after AI run
   const [aiProgress, setAiProgress] = useState(null);
   const aiSignalRef = useRef({ cancelled: false });
+
+  // Is the local FastAPI backend reachable? null = still probing.
+  // Drives "demo mode" in the AI tabs: on the hosted GitHub Pages demo there is
+  // no backend, so those tabs show a "run it locally" panel instead of errors.
+  const [backendUp, setBackendUp] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    backendAvailable().then((up) => { if (alive) setBackendUp(up); });
+    return () => { alive = false; };
+  }, []);
 
   // ── Custom rules ──────────────────────────────────────────────────────────
   const [customRules, setCustomRules] = useState(() => getLocalState()?.customRules || []);
@@ -455,6 +467,16 @@ export function useAppState() {
     notify("All transaction data cleared.", "success");
   }, [notify]);
 
+  // Populate the app with a built-in demo dataset (no upload, no backend) so the
+  // hosted demo isn't an empty shell. Sets up two demo partners and replaces any
+  // current transactions — only surfaced from the empty state, so there's
+  // nothing to clobber.
+  const loadSampleData = useCallback(() => {
+    setPersons(SAMPLE_PERSONS);
+    setTransactions(makeSampleTransactions());
+    notify("Loaded sample data for two demo partners.", "success");
+  }, [notify]);
+
   const saveGHSettings = useCallback(() => {
     localStorage.setItem("fl_gh_token", ghToken);
     localStorage.setItem("fl_gh_repo", ghRepo);
@@ -506,7 +528,7 @@ export function useAppState() {
     persons, personA, personB, isSetup,
     draftNames, setDraftNames, showSetupModal, setShowSetupModal, openSetup, completeSetup,
     // transactions
-    transactions, loading,
+    transactions, loading, backendUp, loadSampleData,
     updateCategory, updateSplitType, deleteTransaction, clearAllData,
     // files
     uploadOwner, setUploadOwner, showUploadModal, setShowUploadModal,

@@ -1,7 +1,7 @@
 import { useAppContext } from "../../context/AppContext";
 
 export default function EmptyState() {
-  const { personA, personB, isSetup, loading, handleDrop, setUploadOwner, setShowUploadModal } = useAppContext();
+  const { personA, personB, isSetup, loading, handleDrop, setUploadOwner, setShowUploadModal, loadSampleData } = useAppContext();
 
   return (
     <div style={{ maxWidth: 560, margin: "48px auto 0" }}>
@@ -43,6 +43,17 @@ export default function EmptyState() {
       {loading && (
         <p className="text-center text-base" style={{ color: "#6366F1" }}>Parsing files…</p>
       )}
+
+      <div className="text-center mt-4">
+        <span className="text-faint text-sm">Just exploring? </span>
+        <button
+          className="btn s"
+          onClick={loadSampleData}
+          style={{ fontSize: 13 }}
+        >
+          Load sample data
+        </button>
+      </div>
 
       <p className="text-center text-faint text-sm mt-5">
         Nothing leaves your browser · no account needed

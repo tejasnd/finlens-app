@@ -2,7 +2,7 @@ import { useModalBehavior } from "../../hooks/useModalBehavior";
 import { useAppContext } from "../../context/AppContext";
 
 export default function SetupModal() {
-  const { isSetup, draftNames, setDraftNames, completeSetup, setShowSetupModal } = useAppContext();
+  const { isSetup, draftNames, setDraftNames, completeSetup, setShowSetupModal, loadSampleData } = useAppContext();
   const onCancel = () => setShowSetupModal(false);
   const onClose = isSetup ? onCancel : undefined;
   const { containerRef, backdropProps } = useModalBehavior(onClose ?? (() => {}), { disabled: !isSetup });
@@ -64,6 +64,19 @@ export default function SetupModal() {
             </button>
           )}
         </div>
+
+        {!isSetup && (
+          <div className="text-center mt-4">
+            <span className="text-faint text-sm">Just exploring? </span>
+            <button
+              className="btn-link"
+              style={{ background: "none", border: "none", padding: 0, color: "var(--accent, #7C8CF8)", cursor: "pointer", fontSize: 13 }}
+              onClick={loadSampleData}
+            >
+              Try with sample data
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

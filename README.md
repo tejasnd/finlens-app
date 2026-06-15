@@ -81,9 +81,21 @@ FinLens is a **privacy-first, local-first couple budgeting app**. Import bank tr
 
 ## Getting Started
 
-Everything runs locally. You need **Node 18+**, **Python 3.11+**, and **[Ollama](https://ollama.com)**.
+There are two ways to use FinLens.
 
-### 1. Backend
+### Option A — Try the live demo (no install)
+
+**→ [tejasnd.github.io/finlens-app](https://tejasnd.github.io/finlens-app)**
+
+The hosted demo is the **frontend only** (GitHub Pages serves static files — it can't run the backend). Click **"Try with sample data"** to explore everything that runs in the browser: couple split & settlement, monthly trends, per-category budgets, subscription detection, and Excel export. Anything you upload stays in your browser.
+
+The AI features — **Ask FinLens (RAG)**, server-side categorization, and Gmail bill search — need the local backend, so in the demo they show a short "run it locally" note instead. To use them, follow Option B.
+
+### Option B — Run locally for the full app
+
+Everything runs on your machine. You need **Node 18+**, **Python 3.11+**, and **[Ollama](https://ollama.com)**.
+
+#### 1. Backend
 
 ```bash
 cd backend
@@ -94,14 +106,14 @@ ollama pull llama3.2:3b            # local LLM (default)
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 2. Frontend
+#### 2. Frontend
 
 ```bash
 npm install
 npm run dev                         # http://localhost:5173 (proxies /api → :8000)
 ```
 
-### 3. MCP agent (optional)
+#### 3. MCP agent (optional)
 
 ```bash
 cd backend && source .venv/bin/activate

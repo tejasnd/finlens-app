@@ -3,7 +3,10 @@ import { PROVIDERS, getAIConfig, setAIConfig, getProviderModel, setProviderModel
 import { useAppContext } from "../../context/AppContext";
 import ConfirmButton from "./ConfirmButton";
 
-const BACKEND = "http://localhost:8000";
+// Same-origin: in dev Vite proxies /api → :8000; in a local run the backend is
+// same-origin. An absolute http://localhost URL would be blocked as mixed
+// content on the https hosted demo, so we always use a relative path.
+const BACKEND = "";
 
 function Spinner() {
   return <span className="spinner" />;
@@ -30,7 +33,7 @@ function ApiKeyWarning({ provider }) {
 
 const PROVIDER_ICONS = { claude: "✦", openai: "◎", gemini: "◈" };
 
-function GmailSection() {
+function GmailSection({ backendUp }) {
   const [status, setStatus] = useState(null); // { hasCredentials, hasToken }
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -132,6 +135,16 @@ function GmailSection() {
         Enables the <strong>gmail-bills-mcp</strong> server to search your inbox for credit-card statements.
         Credentials stay on your machine — the OAuth flow runs entirely locally (loopback).
       </div>
+
+      {backendUp === false && (
+        <div className="text-xs lh-15 mb-3" style={{
+          background: "rgba(255,218,121,.1)", border: "1px solid rgba(255,218,121,.3)",
+          borderRadius: 6, padding: "8px 10px",
+        }}>
+          Gmail bill search needs the local FinLens backend, so it isn't available in this hosted demo.
+          Run FinLens locally (see the README) to use it.
+        </div>
+      )}
 
       {status && (
         <div className="row gap-3 mb-3" style={{ flexWrap: "wrap" }}>
@@ -259,7 +272,7 @@ function GmailSection() {
 export default function GitHubPanel() {
   const {
     ghToken, setGhToken, ghRepo, setGhRepo, ghSyncing,
-    saveGHSettings, doSync, doLoad, setShowGhPanel, clearAllData,
+    saveGHSettings, doSync, doLoad, setShowGhPanel, clearAllData, backendUp,
   } = useAppContext();
 
   const initialConfig = getAIConfig();
@@ -373,7 +386,7 @@ export default function GitHubPanel() {
       )}
 
       <div className="divider" style={{ marginTop: 10 }} />
-      <GmailSection />
+      <GmailSection backendUp={backendUp} />
 
       <div className="divider" style={{ marginTop: 10 }} />
       <div className="panel-section-label">AI Categorization</div>

@@ -1,7 +1,7 @@
 {
   "name": "finlens-app",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A privacy-first personal finance dashboard for parsing bank exports and tracking spending",
   "author": "Tejas Dighe",
   "homepage": "https://tejasnd.github.io/finlens-app",

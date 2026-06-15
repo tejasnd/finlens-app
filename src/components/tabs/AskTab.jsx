@@ -11,8 +11,35 @@ const SUGGESTIONS = [
   "Who spent more on groceries?",
 ];
 
+function BackendRequiredPanel() {
+  return (
+    <div className="card">
+      <div className="card-title">Ask FinLens</div>
+      <p className="text-muted text-sm mb-3">
+        Natural-language Q&amp;A over your finances runs through the local FinLens
+        backend (on-device retrieval + a local LLM). It isn't available in this
+        hosted demo, but it works when you run FinLens locally.
+      </p>
+      <div className="surface-tile" style={{ padding: "12px 14px" }}>
+        <div className="text-sm fw-700 mb-2">Run it locally to enable this tab</div>
+        <pre className="mono text-xs" style={{ whiteSpace: "pre-wrap", margin: 0, lineHeight: 1.6 }}>
+{`cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+ollama pull llama3.2:3b
+uvicorn app.main:app --port 8000`}
+        </pre>
+      </div>
+      <p className="text-xs text-faint mt-3">
+        Setup details are in the project README. Everything else in this demo —
+        budgets, couple split, charts, export — works without the backend.
+      </p>
+    </div>
+  );
+}
+
 export default function AskTab() {
-  const { transactions, isEmpty } = useAppContext();
+  const { transactions, isEmpty, backendUp } = useAppContext();
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -38,6 +65,9 @@ export default function AskTab() {
     }
     setLoading(false);
   }
+
+  // Hosted demo (or backend down): show how to enable it instead of a fetch error.
+  if (backendUp === false) return <BackendRequiredPanel />;
 
   if (isEmpty) {
     return (
