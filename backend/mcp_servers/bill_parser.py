@@ -13,15 +13,19 @@ _DATE = (
 
 
 def _amount_for(text: str, label: str) -> float | None:
-    """First money amount appearing within ~60 chars after `label`."""
-    m = re.search(label + r"[:\s]{0,60}?" + _MONEY, text, re.IGNORECASE)
+    """First money amount appearing shortly after `label`.
+
+    The gap allows ordinary words (e.g. "minimum payment **of** $35.00") but stops
+    at the next ``$`` or newline so it can't skip ahead to an unrelated amount.
+    """
+    m = re.search(label + r"[^$\n]{0,40}?" + _MONEY, text, re.IGNORECASE)
     if not m:
         return None
     return float(m.group(1).replace(",", ""))
 
 
 def _date_for(text: str, label: str) -> str | None:
-    m = re.search(label + r"[:\s]{0,60}?" + _DATE, text, re.IGNORECASE)
+    m = re.search(label + r"[^\n]{0,40}?" + _DATE, text, re.IGNORECASE)
     return m.group(1).strip() if m else None
 
 
@@ -30,7 +34,7 @@ def parse_statement(text: str) -> dict:
     return {
         "statement_balance": _amount_for(text, r"(?:new balance|statement balance|total balance)"),
         "minimum_due": _amount_for(text, r"(?:minimum payment due|minimum amount due|minimum payment)"),
-        "due_date": _date_for(text, r"(?:payment due date|due date|autopay)"),
+        "due_date": _date_for(text, r"(?:payment due date|due date|due by|is due on|due on|autopay)"),
     }
 
 

@@ -19,9 +19,22 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 import re
 
 # Gmail search that targets statement / bill-ready emails (mirrors the MCP server).
+# Scoped to the major card issuers and with promo / payment-confirmation noise
+# filtered out, so the bill list shows actual statements rather than marketing.
+_ISSUERS = (
+    'from:(chase.com OR citi.com OR citibank.com OR citicards.com OR '
+    'biltrewards.com OR bilt.com OR discover.com OR americanexpress.com OR aexp.com)'
+)
+_NOISE = (
+    '-category:promotions '
+    '-subject:(offer OR sale OR rewards OR earn OR bonus OR "limited time" OR '
+    'APR OR confirmation OR "payment received" OR "thank you" OR snapshot)'
+)
 _BILL_TERMS = (
+    f'{_ISSUERS} '
     '(subject:(statement OR "bill is ready" OR "payment due" OR "minimum payment") '
-    'OR "statement balance" OR "minimum payment due")'
+    'OR "statement balance" OR "minimum payment due") '
+    f'{_NOISE}'
 )
 DEFAULT_NEWER_THAN = "1y"
 

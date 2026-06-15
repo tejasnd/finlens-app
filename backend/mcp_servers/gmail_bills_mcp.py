@@ -19,10 +19,18 @@ CREDS_PATH = HERE / "credentials.json"
 TOKEN_PATH = HERE / "token.json"
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
-# Gmail search that targets statement / bill-ready emails.
+# Gmail search that targets statement / bill-ready emails, scoped to the major
+# card issuers with promo / payment-confirmation noise filtered out (mirrors the
+# FastAPI backend's gmail_client._BILL_TERMS).
 DEFAULT_QUERY = (
+    'from:(chase.com OR citi.com OR citibank.com OR citicards.com OR '
+    'biltrewards.com OR bilt.com OR discover.com OR americanexpress.com OR aexp.com) '
     '(subject:(statement OR "bill is ready" OR "payment due" OR "minimum payment") '
-    'OR "statement balance" OR "minimum payment due") newer_than:1y'
+    'OR "statement balance" OR "minimum payment due") '
+    '-category:promotions '
+    '-subject:(offer OR sale OR rewards OR earn OR bonus OR "limited time" OR '
+    'APR OR confirmation OR "payment received" OR "thank you" OR snapshot) '
+    'newer_than:1y'
 )
 
 mcp = FastMCP("gmail-bills")
