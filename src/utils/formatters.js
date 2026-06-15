@@ -6,12 +6,12 @@ export function merchantKey(description) {
     // card last-4: "XXXX 1234" or "...1234" at end
     .replace(/\b\d{4}\b\s*$/g, "")
     // dates: MM/DD, MM-DD, MMDDYY, MMDDYYYY patterns
-    .replace(/\b\d{2}[\/\-]\d{2}([\/\-]\d{2,4})?\b/g, "")
+    .replace(/\b\d{2}[/-]\d{2}([/-]\d{2,4})?\b/g, "")
     // store / location IDs: "#1234", "# 1234", "NO 1234", "NO. 1234"
     .replace(/#\s*\d+/g, "")
     .replace(/\bNO\.?\s*\d+/g, "")
     // trailing sequences of digits (store numbers, location codes)
-    .replace(/\s+\d[\d\-]*$/g, "")
+    .replace(/\s+\d[\d-]*$/g, "")
     // common noise suffixes
     .replace(/\b(STORE|LOCATION|BRANCH|UNIT|STE|SUITE|LLC|INC|CORP|LTD|CO)\b\.?/g, "")
     // collapse whitespace

@@ -10,5 +10,5 @@ export function getLocalState() {
 export function saveLocalState(state) {
   try {
     localStorage.setItem("fl_state", JSON.stringify(state));
-  } catch {}
+  } catch { /* storage unavailable or quota exceeded — ignore */ }
 }

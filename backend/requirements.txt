@@ -1,0 +1,18 @@
+# FinLens FastAPI backend
+# fastapi 0.137+ is required for compatibility with the starlette 1.x that mcp pulls in.
+fastapi==0.137.0
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+pydantic-settings==2.7.1
+
+# Phase 2 — RAG
+sentence-transformers==3.3.1
+numpy==2.2.1
+sqlmodel==0.0.22
+
+# Phase 3/4/5 — MCP servers + agent host
+mcp[cli]==1.2.0
+
+# Phase 4 — Gmail bill ingestion
+google-api-python-client==2.157.0
+google-auth-oauthlib==1.2.1

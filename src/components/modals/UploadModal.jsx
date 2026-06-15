@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { useModalBehavior } from "../../hooks/useModalBehavior";
 import { useAppContext } from "../../context/AppContext";
+import { fetchGmailBills } from "../../services/gmailBills";
+import { fmt } from "../../utils/formatters";
 
 export default function UploadModal() {
   const {
     personA, personB, uploadOwner, setUploadOwner, openFilePicker, setShowUploadModal,
-    loading, aiProgress, setAiProgress, cancelAI,
+    loading, aiProgress, setAiProgress, cancelAI, importGmailBills,
   } = useAppContext();
   const onClose = () => setShowUploadModal(false);
   const isAIRunning = aiProgress?.phase === "running";
@@ -12,6 +15,42 @@ export default function UploadModal() {
   const pct = aiProgress?.total > 0
     ? Math.round((aiProgress.done / aiProgress.total) * 100)
     : 0;
+
+  // ── Gmail bill discovery / selection ──────────────────────────────────────
+  const [gPhase, setGPhase] = useState("idle"); // idle | loading | list | error
+  const [gBills, setGBills] = useState([]);
+  const [gErr, setGErr] = useState("");
+  const [gSel, setGSel] = useState(() => new Set());
+
+  async function discoverBills() {
+    setGPhase("loading");
+    setGErr("");
+    try {
+      const bills = await fetchGmailBills("1m", 25);
+      setGBills(bills);
+      // Preselect the ones that clearly look like statements.
+      setGSel(new Set(bills.filter((b) => b.likely_bill).map((b) => b.id)));
+      setGPhase("list");
+    } catch (e) {
+      setGErr(e.message || "Couldn't reach Gmail.");
+      setGPhase("error");
+    }
+  }
+
+  function toggleBill(id) {
+    setGSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function retrieveSelected() {
+    const chosen = gBills.filter((b) => gSel.has(b.id));
+    if (!chosen.length) return;
+    importGmailBills(chosen, uploadOwner);
+    onClose();
+  }
 
   const { containerRef, backdropProps } = useModalBehavior(onClose, { disabled: isAIRunning || loading });
 
@@ -118,6 +157,94 @@ export default function UploadModal() {
             {isAIDone ? "Done" : "Cancel"}
           </button>
         </div>
+
+        {/* ── Gmail bill import ──────────────────────────────────────────── */}
+        <div className="divider" style={{ margin: "16px 0 12px" }} />
+
+        {gPhase !== "list" && (
+          <>
+            <button
+              className="btn s w-full"
+              disabled={loading || isAIRunning || gPhase === "loading"}
+              onClick={discoverBills}
+            >
+              {gPhase === "loading" ? "Checking Gmail…" : "📧 Find recent statements in Gmail"}
+            </button>
+            <div className="text-xs text-faint lh-15 mt-2">
+              Scans the last 30 days for credit-card statements and lets you pick which to import as
+              bill records (issuer, balance, due date). These are summaries — for individual
+              transactions, upload the CSV/Excel export above.
+            </div>
+            {gPhase === "error" && (
+              <div className="text-xs mt-2" style={{ color: "var(--rose, #e17055)" }}>{gErr}</div>
+            )}
+          </>
+        )}
+
+        {gPhase === "list" && (
+          <div>
+            <div className="row-between mb-2">
+              <span className="fw-600 text-sm">
+                {gBills.length
+                  ? `${gBills.length} recent statement${gBills.length !== 1 ? "s" : ""} found`
+                  : "No statements found in the last 30 days"}
+              </span>
+              <button className="btn s" style={{ fontSize: 11 }} onClick={() => setGPhase("idle")}>
+                Back
+              </button>
+            </div>
+
+            {gBills.length > 0 && (
+              <>
+                <div className="text-xs text-faint mb-2">
+                  Imported as bill summaries for <strong>{uploadOwner}</strong> (category “Finance &amp; Fees”).
+                </div>
+                <div className="col gap-2" style={{ maxHeight: 230, overflowY: "auto" }}>
+                  {gBills.map((b) => {
+                    const checked = gSel.has(b.id);
+                    const bal = b.parsed?.statement_balance ?? b.parsed?.minimum_due;
+                    return (
+                      <label
+                        key={b.id}
+                        className="surface-tile"
+                        style={{ padding: "8px 11px", display: "flex", gap: 9, alignItems: "flex-start", cursor: "pointer" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleBill(b.id)}
+                          style={{ marginTop: 3, flexShrink: 0 }}
+                        />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div className="row-between" style={{ gap: 8 }}>
+                            <span className="text-sm fw-600 truncate" style={{ flex: 1 }}>
+                              {b.subject || "(no subject)"}
+                            </span>
+                            {bal != null && (
+                              <span className="mono text-sm fw-700" style={{ flexShrink: 0 }}>{fmt(bal)}</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-faint truncate">
+                            {b.sender}
+                            {b.parsed?.due_date ? ` · due ${b.parsed.due_date}` : ""}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <button
+                  className="btn p w-full mt-3"
+                  disabled={gSel.size === 0}
+                  onClick={retrieveSelected}
+                >
+                  Retrieve {gSel.size} bill{gSel.size !== 1 ? "s" : ""}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

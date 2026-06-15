@@ -1,4 +1,4 @@
-# FinLens — GitHub Setup Guide for K & T
+# FinLens — GitHub Setup & Data Sync Guide
 
 ## 1. Save Your App Code to GitHub
 
@@ -53,11 +53,11 @@ npm run deploy
 
 ---
 
-## 4. Share with Your Partner
+## 4. Share with Another Person (Couple / Household Mode)
 
 - App code: GitHub → Settings → Collaborators → invite them
 - Data: share the same `finlens-data` private repo + token
-  - One person syncs → other loads — that's it
+  - One person syncs → the other loads — that's it
 
 | Repo | Purpose |
 |------|---------|

@@ -51,7 +51,6 @@ export default function ConfirmButton({
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
       <span style={{ fontSize: 11, color: "var(--text-2)", whiteSpace: "nowrap" }}>{label}</span>
       <button
-        // eslint-disable-next-line jsx-a11y/no-autofocus
         autoFocus
         onClick={confirm}
         style={{

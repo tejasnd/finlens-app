@@ -8,6 +8,7 @@ export function AppProvider({ children }) {
   return <AppContext.Provider value={state}>{children}</AppContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAppContext() {
   const ctx = useContext(AppContext);
   if (ctx === null) {

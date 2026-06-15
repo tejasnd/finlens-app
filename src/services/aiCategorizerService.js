@@ -1,19 +1,9 @@
-import { getCache, setCache } from "../utils/categoryCache";
-import { CATEGORIES, AI_BATCH_SIZE } from "../constants";
-
-function aiError(message, code) {
-  const err = new Error(message);
-  err.code = code;
-  return err;
-}
-
-function providerError(status, providerName) {
-  if (status === 401 || status === 403)
-    return aiError(`Invalid API key. Check your ${providerName} API key in settings.`, "INVALID_KEY");
-  if (status === 429)
-    return aiError("Rate limit reached — wait a moment and try again.", "RATE_LIMITED");
-  return aiError(`${providerName} API error (${status})`, "API_ERROR");
-}
+// Provider metadata + selection for the AI-categorization picker.
+//
+// The actual LLM calls run server-side in the FastAPI backend (see
+// backendCategorizer.js → /api/categorize). This module tracks which provider
+// the user picked, their API key, and an optional model override. When no model
+// is set the backend falls back to its .env default for that provider.
 
 export const PROVIDERS = {
   claude: {
@@ -22,22 +12,12 @@ export const PROVIDERS = {
     keyLabel: "Anthropic API Key",
     keyPlaceholder: "sk-ant-api03-...",
     keyStorageKey: "fl_claude_key",
-    models: [
-      {
-        id: "claude-haiku-4-5-20251001",
-        name: "Claude Haiku 4.5",
-        badge: "Best value",
-        badgeColor: "#00B894",
-        desc: "Fastest and cheapest. Ideal for bulk categorization — handles 500+ transactions in seconds.",
-      },
-      {
-        id: "claude-sonnet-4-6",
-        name: "Claude Sonnet 4.6",
-        badge: "Recommended",
-        badgeColor: "#7C8CF8",
-        desc: "Better accuracy on ambiguous merchants. Worth it if you have many 'Other' results.",
-      },
-    ],
+    keyHelp: "console.anthropic.com",
+    modelStorageKey: "fl_claude_model",
+    modelDefault: "claude-haiku-4-5",
+    modelSuggestions: "claude-haiku-4-5 · claude-sonnet-4-6 · claude-opus-4-8",
+    modelDescription: "Haiku is fastest and cheapest. Sonnet balances speed and quality. Opus is most capable.",
+    modelDocsUrl: "console.anthropic.com/docs/about-claude/models",
   },
   openai: {
     name: "ChatGPT",
@@ -45,61 +25,35 @@ export const PROVIDERS = {
     keyLabel: "OpenAI API Key",
     keyPlaceholder: "sk-proj-...",
     keyStorageKey: "fl_openai_key",
-    models: [
-      {
-        id: "gpt-4o-mini",
-        name: "GPT-4o Mini",
-        badge: "Best value",
-        badgeColor: "#00B894",
-        desc: "Very cheap and fast. Comparable to Haiku for simple categorization tasks.",
-      },
-      {
-        id: "gpt-4o",
-        name: "GPT-4o",
-        badge: "High accuracy",
-        badgeColor: "#F59E0B",
-        desc: "Most capable OpenAI model. Use if accuracy matters more than cost.",
-      },
-    ],
+    keyHelp: "platform.openai.com",
+    modelStorageKey: "fl_openai_model",
+    modelDefault: "gpt-4o-mini",
+    modelSuggestions: "gpt-4o-mini · gpt-4o",
+    modelDescription: "gpt-4o-mini is cheaper and faster. gpt-4o offers higher quality categorization.",
+    modelDocsUrl: "platform.openai.com/docs/models",
   },
   gemini: {
     name: "Gemini",
     company: "Google",
     keyLabel: "Google AI API Key",
-    keyPlaceholder: "AIzaSy...",
+    keyPlaceholder: "AIza...",
     keyStorageKey: "fl_gemini_key",
-    models: [
-      {
-        id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
-        badge: "Recommended",
-        badgeColor: "#7C8CF8",
-        desc: "Latest Google model. Excellent speed and accuracy at low cost.",
-      },
-      {
-        id: "gemini-1.5-flash",
-        name: "Gemini 1.5 Flash",
-        badge: "Free tier",
-        badgeColor: "#54A0FF",
-        desc: "Generous free tier — great for trying out AI categorization at no cost.",
-      },
-    ],
+    keyHelp: "aistudio.google.com",
+    modelStorageKey: "fl_gemini_model",
+    modelDefault: "gemini-2.0-flash",
+    modelSuggestions: "gemini-2.0-flash · gemini-2.0-flash-lite",
+    modelDescription: "Flash is the recommended default. Flash Lite is faster and cheaper with slightly lower accuracy.",
+    modelDocsUrl: "ai.google.dev/gemini-api/docs/models",
   },
 };
 
 export function getAIConfig() {
   const provider = localStorage.getItem("fl_ai_provider") || "claude";
-  const providerConfig = PROVIDERS[provider] || PROVIDERS.claude;
-  const defaultModel = providerConfig.models[0].id;
-  return {
-    provider,
-    model: localStorage.getItem("fl_ai_model") || defaultModel,
-  };
+  return { provider: PROVIDERS[provider] ? provider : "claude" };
 }
 
-export function setAIConfig(provider, model) {
+export function setAIConfig(provider) {
   localStorage.setItem("fl_ai_provider", provider);
-  localStorage.setItem("fl_ai_model", model);
 }
 
 export function hasAIKey() {
@@ -108,159 +62,14 @@ export function hasAIKey() {
   return !!(key && localStorage.getItem(key));
 }
 
-// options.onProgress({ done, total }) — called after each batch
-// options.signal — { cancelled: false } flag; set to true to abort remaining batches
-export async function categorizeWithAI(descriptions, options = {}) {
-  if (!descriptions.length || !hasAIKey()) return {};
-
-  const { onProgress, signal } = options;
-  const { provider, model } = getAIConfig();
-  const apiKey = localStorage.getItem(PROVIDERS[provider].keyStorageKey) || "";
-
-  const result = {};
-  const uncached = [];
-
-  for (const desc of [...new Set(descriptions)]) {
-    const cached = getCache(desc);
-    if (cached) result[desc] = cached;
-    else uncached.push(desc);
-  }
-
-  const total = uncached.length;
-  let done = 0;
-
-  for (let i = 0; i < uncached.length; i += AI_BATCH_SIZE) {
-    if (signal?.cancelled) break;
-
-    const batch = uncached.slice(i, i + AI_BATCH_SIZE);
-    let batchResult = {};
-
-    if (provider === "claude") batchResult = await callClaude(batch, model, apiKey);
-    else if (provider === "openai") batchResult = await callOpenAI(batch, model, apiKey);
-    else if (provider === "gemini") batchResult = await callGemini(batch, model, apiKey);
-
-    Object.assign(result, batchResult);
-    for (const [desc, cat] of Object.entries(batchResult)) setCache(desc, cat);
-
-    done += batch.length;
-    onProgress?.({ done, total });
-  }
-
-  return result;
+export function getProviderModel(providerKey) {
+  const storageKey = PROVIDERS[providerKey]?.modelStorageKey;
+  return storageKey ? (localStorage.getItem(storageKey) || "") : "";
 }
 
-function buildPrompt(descriptions) {
-  const validCats = CATEGORIES.join(", ");
-  const numbered = descriptions.map((d, i) => `${i + 1}. ${d}`).join("\n");
-  return `You are a financial transaction categorizer. Assign each transaction to exactly one category.
-
-Categories: ${validCats}
-
-Transactions:
-${numbered}
-
-Rules: Use "Other" only if nothing fits. Respond with JSON only using the number as key: {"1": "Category", "2": "Category", ...}`;
-}
-
-function parseResponse(text, descriptions) {
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return {};
-  try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    const result = {};
-    for (const [idx, cat] of Object.entries(parsed)) {
-      const desc = descriptions[parseInt(idx, 10) - 1];
-      if (desc) result[desc] = CATEGORIES.includes(cat) ? cat : "Other";
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-async function callClaude(descriptions, model, apiKey) {
-  let res;
-  try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1024,
-        messages: [{ role: "user", content: buildPrompt(descriptions) }],
-      }),
-    });
-  } catch {
-    throw aiError("Network error — check your internet connection and try again.", "NETWORK_ERROR");
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw body?.error?.message
-      ? aiError(body.error.message, res.status === 429 ? "RATE_LIMITED" : res.status === 401 || res.status === 403 ? "INVALID_KEY" : "API_ERROR")
-      : providerError(res.status, "Claude");
-  }
-  const data = await res.json();
-  const text = data?.content?.[0]?.text ?? "";
-  return parseResponse(text, descriptions);
-}
-
-async function callOpenAI(descriptions, model, apiKey) {
-  let res;
-  try {
-    res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1024,
-        messages: [{ role: "user", content: buildPrompt(descriptions) }],
-      }),
-    });
-  } catch {
-    throw aiError("Network error — check your internet connection and try again.", "NETWORK_ERROR");
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw body?.error?.message
-      ? aiError(body.error.message, res.status === 429 ? "RATE_LIMITED" : res.status === 401 || res.status === 403 ? "INVALID_KEY" : "API_ERROR")
-      : providerError(res.status, "OpenAI");
-  }
-  const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content ?? "";
-  return parseResponse(text, descriptions);
-}
-
-async function callGemini(descriptions, model, apiKey) {
-  let res;
-  try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: buildPrompt(descriptions) }] }],
-        }),
-      }
-    );
-  } catch {
-    throw aiError("Network error — check your internet connection and try again.", "NETWORK_ERROR");
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw body?.error?.message
-      ? aiError(body.error.message, res.status === 429 ? "RATE_LIMITED" : res.status === 401 || res.status === 403 ? "INVALID_KEY" : "API_ERROR")
-      : providerError(res.status, "Gemini");
-  }
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  return parseResponse(text, descriptions);
+export function setProviderModel(providerKey, model) {
+  const storageKey = PROVIDERS[providerKey]?.modelStorageKey;
+  if (!storageKey) return;
+  if (model.trim()) localStorage.setItem(storageKey, model.trim());
+  else localStorage.removeItem(storageKey);
 }

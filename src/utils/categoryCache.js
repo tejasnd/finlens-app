@@ -77,7 +77,7 @@ export function getCacheStats() {
 export function clearCache() {
   try {
     localStorage.removeItem(CACHE_KEY);
-  } catch {}
+  } catch { /* storage unavailable — ignore */ }
 }
 
 /**

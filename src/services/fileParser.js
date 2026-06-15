@@ -47,7 +47,7 @@ export function parseFile(file, owner) {
           const rawAmts = dataRows.map((r) => {
             const v = r[amtIdx];
             if (v == null || v === "") return null;
-            const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
+            const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
             return isNaN(n) ? null : n;
           });
 

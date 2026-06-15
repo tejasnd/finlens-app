@@ -51,7 +51,7 @@ export const CATEGORY_CACHE_TTL_DAYS = 30;
 /** Maximum number of entries kept in the category cache before evicting oldest. */
 export const CATEGORY_CACHE_MAX_ENTRIES = 500;
 
-export const TABS = ["Overview","Couple","Monthly","Categories","Budget","Subscriptions","Planning","Transactions"];
+export const TABS = ["Overview","Ask","Couple","Monthly","Categories","Budget","Subscriptions","Planning","Transactions"];
 
 export const DEFAULT_PLAN = {
   personAIncome: 0, personBIncome: 0,

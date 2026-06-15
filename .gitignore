@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Python backend
+backend/.venv
+__pycache__/
+*.pyc
+.env
+*.db
+
+# OAuth secrets / tokens (Gmail MCP server)
+credentials.json
+token.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

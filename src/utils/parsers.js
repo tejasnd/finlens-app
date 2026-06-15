@@ -13,7 +13,7 @@ export function guessColumns(headers) {
 
 export function parseAmount(val) {
   if (val == null || val === "") return null;
-  const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ""));
+  const n = parseFloat(String(val).replace(/[^0-9.-]/g, ""));
   return isNaN(n) ? null : Math.abs(n);
 }
 
@@ -24,7 +24,7 @@ export function parseDate(val) {
     return isNaN(d.getTime()) ? null : d;
   }
   const str = String(val).trim();
-  const mdy = str.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+  const mdy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (mdy) {
     const [, m, day, y] = mdy;
     const year = y.length === 2 ? 2000 + +y : +y;

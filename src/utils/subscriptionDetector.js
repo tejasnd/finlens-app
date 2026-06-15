@@ -63,7 +63,7 @@ export function getExcludedMerchants() {
 export function setExcludedMerchants(set) {
   try {
     localStorage.setItem(EXCLUDED_STORAGE_KEY, JSON.stringify([...set]));
-  } catch {}
+  } catch { /* storage unavailable — ignore */ }
 }
 
 // ── main detection ───────────────────────────────────────────────────────────

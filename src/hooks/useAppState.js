@@ -1,7 +1,9 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { CATEGORIES, MONTHS, DEFAULT_PLAN, SHARED_CATS, TOP_MERCHANTS_COUNT } from "../constants";
 import { getLocalState, saveLocalState } from "../utils/storage";
+import { clearCache } from "../utils/categoryCache";
 import { parseFile } from "../services/fileParser";
+import { billToTransaction } from "../services/gmailBills";
 import { smartCategoryAI, applyCustomRules } from "../utils/categorization";
 import { calcSettlement } from "../services/settlement";
 import { groupMerchants } from "../utils/formatters";
@@ -268,6 +270,49 @@ export function useAppState() {
     aiSignalRef.current.cancelled = true;
   }, []);
 
+  // Re-run AI categorization on transactions already imported. Only touches rows
+  // still in "Other" (never clobbers manual fixes or rule matches), and forces a
+  // fresh LLM call so it's useful after you add an API key or start the backend.
+  const recategorizeAI = useCallback(async () => {
+    const others = transactions.filter((t) => t.category === "Other");
+    if (!others.length) {
+      notify('Nothing to re-categorize — no transactions are in "Other".', "info");
+      return;
+    }
+    const signal = { cancelled: false };
+    aiSignalRef.current = signal;
+    setAiProgress({ done: 0, total: others.length, phase: "running" });
+
+    const result = await smartCategoryAI(transactions, {
+      force: true,
+      signal,
+      onProgress: ({ done, total }) => setAiProgress({ done, total, phase: "running" }),
+    });
+
+    if (signal.cancelled) { setAiProgress(null); return; }
+    if (result.status === "offline") {
+      notify("AI categorization skipped — FinLens backend isn't running.", "info");
+      setAiProgress(null);
+      return;
+    }
+    if (result.status === "error") {
+      notify("AI categorization failed — the LLM was unreachable. Check Ollama or your API key in Sync & AI Settings.", "error");
+      setAiProgress(null);
+      return;
+    }
+
+    setTransactions(result.transactions);
+    const skipped = result.transactions.filter((t) => t.category === "Other").length;
+    const categorized = Math.max(0, others.length - skipped);
+    setAiProgress({ done: others.length, total: others.length, phase: "done", categorized, skipped });
+    notify(
+      categorized
+        ? `AI categorized ${categorized} transaction${categorized !== 1 ? "s" : ""}.`
+        : "The model couldn't confidently categorize the remaining transactions.",
+      categorized ? "success" : "info"
+    );
+  }, [transactions, notify]);
+
   const doFiles = useCallback(async (files, owner) => {
     setLoading(true);
     setAiProgress(null);
@@ -283,24 +328,32 @@ export function useAppState() {
       });
 
       const uncategorizedCount = merged.filter((t) => t.category === "Other").length;
+      const categorizedBefore = merged.filter((t) => t.category !== "Other").length;
 
       if (uncategorizedCount > 0) {
         setAiProgress({ done: 0, total: uncategorizedCount, phase: "running" });
 
-        merged = await smartCategoryAI(merged, {
+        const aiResult = await smartCategoryAI(merged, {
           signal,
           onProgress: ({ done, total }) => {
             setAiProgress({ done, total, phase: "running" });
           },
         });
+        merged = aiResult.transactions;
 
-        if (!signal.cancelled) {
-          const categorized = merged.filter((t) => t.category !== "Other").length -
-            (results.flat().filter((t) => t.category !== "Other").length);
+        if (signal.cancelled) {
+          setAiProgress(null);
+        } else if (aiResult.status === "offline") {
+          // Surface the silent-no-op: data is still imported, just not AI-labeled.
+          notify('AI categorization skipped — FinLens backend isn\'t running. Imported as "Other".', "info");
+          setAiProgress(null);
+        } else if (aiResult.status === "error") {
+          notify("AI categorization failed — the LLM was unreachable. Check Ollama or your API key in Sync & AI Settings.", "error");
+          setAiProgress(null);
+        } else {
+          const categorized = merged.filter((t) => t.category !== "Other").length - categorizedBefore;
           const skipped = merged.filter((t) => t.category === "Other").length;
           setAiProgress({ done: uncategorizedCount, total: uncategorizedCount, phase: "done", categorized: Math.max(0, categorized), skipped });
-        } else {
-          setAiProgress(null);
         }
       }
 
@@ -315,12 +368,34 @@ export function useAppState() {
       setAiProgress(null);
     }
     setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customRules]);
 
   const handleDrop = useCallback(
     (e, owner) => { e.preventDefault(); doFiles(e.dataTransfer.files, owner); },
     [doFiles]
   );
+
+  // Import selected Gmail statements as bill records (summaries, not line items).
+  // Deduped by Gmail message id so re-importing the same bill is a no-op. Returns
+  // the number actually added.
+  const importGmailBills = useCallback((bills, owner) => {
+    const incoming = bills.map((b) => billToTransaction(b, owner));
+    let addedCount = 0;
+    setTransactions((prev) => {
+      const ids = new Set(prev.map((t) => t.id));
+      const added = incoming.filter((t) => !ids.has(t.id));
+      addedCount = added.length;
+      return [...prev, ...added];
+    });
+    notify(
+      addedCount
+        ? `Imported ${addedCount} bill${addedCount !== 1 ? "s" : ""} from Gmail.`
+        : "Those bills were already imported.",
+      addedCount ? "success" : "info"
+    );
+    return addedCount;
+  }, [notify]);
 
   const openFilePicker = useCallback((owner) => {
     const inp = document.createElement("input");
@@ -361,6 +436,24 @@ export function useAppState() {
     (id) => setTransactions((p) => p.filter((t) => t.id !== id)),
     []
   );
+
+  // Wipe all imported financial data from this browser AND the backend RAG store,
+  // so "Ask FinLens" stops answering from deleted data. Identity (persons) and
+  // planning inputs are intentionally preserved.
+  const clearAllData = useCallback(async () => {
+    setTransactions([]);
+    setBudgets({});
+    setCustomRules([]);
+    setSplitPct({ A: 50, B: 50 });
+    clearCache();
+    try {
+      await fetch("/api/transactions", { method: "DELETE" });
+    } catch {
+      // Backend offline — local data is already cleared; the RAG store is
+      // rebuilt from the (now empty) client dataset on the next index anyway.
+    }
+    notify("All transaction data cleared.", "success");
+  }, [notify]);
 
   const saveGHSettings = useCallback(() => {
     localStorage.setItem("fl_gh_token", ghToken);
@@ -414,11 +507,11 @@ export function useAppState() {
     draftNames, setDraftNames, showSetupModal, setShowSetupModal, openSetup, completeSetup,
     // transactions
     transactions, loading,
-    updateCategory, updateSplitType, deleteTransaction,
+    updateCategory, updateSplitType, deleteTransaction, clearAllData,
     // files
     uploadOwner, setUploadOwner, showUploadModal, setShowUploadModal,
-    doFiles, handleDrop, openFilePicker,
-    aiProgress, setAiProgress, cancelAI,
+    doFiles, handleDrop, openFilePicker, importGmailBills,
+    aiProgress, setAiProgress, cancelAI, recategorizeAI,
     // custom rules
     customRules, newKw, setNewKw, newCat, setNewCat, showRules, setShowRules,
     addRule, removeRule,

@@ -11,6 +11,7 @@ import GitHubPanel      from "./components/layout/GitHubPanel";
 import RulesPanel       from "./components/layout/RulesPanel";
 import EmptyState       from "./components/layout/EmptyState";
 import OverviewTab      from "./components/tabs/OverviewTab";
+import AskTab           from "./components/tabs/AskTab";
 import CoupleTab        from "./components/tabs/CoupleTab";
 import MonthlyTab       from "./components/tabs/MonthlyTab";
 import CategoriesTab    from "./components/tabs/CategoriesTab";
@@ -30,6 +31,7 @@ const DATA_TABS = ["Overview", "Couple", "Monthly", "Categories", "Transactions"
 // references are stable across AppShell renders.
 const TABS = {
   Overview:      memo(OverviewTab),
+  Ask:           memo(AskTab),
   Couple:        memo(CoupleTab),
   Monthly:       memo(MonthlyTab),
   Categories:    memo(CategoriesTab),
@@ -44,7 +46,9 @@ function AppShell() {
     isSetup, isEmpty, tab,
     showSetupModal, showUploadModal, showSplitModal, showGhPanel, showRules,
     uncategorized, toasts, dismissToast,
+    recategorizeAI, aiProgress,
   } = useAppContext();
+  const aiRunning = aiProgress?.phase === "running";
 
   const showUploadPrompt = isEmpty && DATA_TABS.includes(tab);
   const TabComponent = TABS[tab];
@@ -65,8 +69,18 @@ function AppShell() {
 
           <main role="tabpanel" aria-label={tab} style={{ flex: 1, padding: "20px 28px" }}>
             {!isEmpty && uncategorized > 0 && (
-              <div className="warn">
-                <span><strong>{uncategorized}</strong> transactions still in "Other" — use Rules or click category badges in Transactions to fix.</span>
+              <div className="warn" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span style={{ flex: 1, minWidth: 220 }}>
+                  <strong>{uncategorized}</strong> transactions still in "Other" — re-run AI, add Rules, or click category badges in Transactions.
+                </span>
+                <button
+                  className="btn s"
+                  style={{ whiteSpace: "nowrap" }}
+                  onClick={recategorizeAI}
+                  disabled={aiRunning}
+                >
+                  {aiRunning ? `Categorizing ${aiProgress.done}/${aiProgress.total}…` : "Categorize with AI"}
+                </button>
               </div>
             )}
 

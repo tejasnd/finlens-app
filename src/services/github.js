@@ -65,7 +65,7 @@ export async function syncToGitHub(token, repo, data) {
     try {
       const e = await res.json();
       bodyMessage = e.message || undefined;
-    } catch {}
+    } catch { /* response body not JSON — fall back to status-based message */ }
     const err = githubError(res.status, bodyMessage);
     console.error("[github] syncToGitHub PUT failed:", res.status, err.message);
     throw err;

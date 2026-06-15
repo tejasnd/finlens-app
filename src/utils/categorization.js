@@ -35,7 +35,7 @@ export function applyCustomRules(description, customRules) {
 
 export function smartCategory(desc) {
   if (!desc) return "Other";
-  const d = desc.toLowerCase().replace(/[^\w\s&.'/\-]/g, " ");
+  const d = desc.toLowerCase().replace(/[^\w\s&.'/-]/g, " ");
   for (const [cat, patterns] of RULES) {
     for (const p of patterns) {
       if (p.test(d)) return cat;
@@ -44,17 +44,39 @@ export function smartCategory(desc) {
   return "Other";
 }
 
-import { categorizeWithAI, hasAIKey } from "../services/aiCategorizerService";
+import { categorizeViaBackend, backendAvailable } from "../services/backendCategorizer";
+import { CATEGORIES } from "../constants";
 
+// LLM categorization runs entirely in the local FastAPI backend. If the backend
+// isn't running, transactions keep their heuristic categories (no browser-direct
+// LLM call), so the app degrades gracefully offline.
+//
+// Returns { transactions, status } where status is:
+//   "none"    — nothing left in "Other" to categorize
+//   "offline" — backend unreachable; transactions unchanged
+//   "error"   — backend reached but the LLM call failed; transactions unchanged
+//   "ok"      — categorization ran (some "Other" rows may still remain if the
+//               model couldn't place them)
+// The caller uses status to tell the user what happened instead of failing
+// silently.
 export async function smartCategoryAI(transactions, options = {}) {
   const others = transactions.filter((t) => t.category === "Other");
-  if (!others.length || !hasAIKey()) return transactions;
+  if (!others.length) return { transactions, status: "none" };
+  if (!(await backendAvailable())) return { transactions, status: "offline" };
 
   const descriptions = others.map((t) => t.description);
-  const aiMap = await categorizeWithAI(descriptions, options);
-  return transactions.map((t) =>
+  let aiMap;
+  try {
+    aiMap = await categorizeViaBackend(descriptions, CATEGORIES, { force: options.force });
+    options.onProgress?.({ done: descriptions.length, total: descriptions.length });
+  } catch (e) {
+    return { transactions, status: "error", error: e.message };
+  }
+
+  const updated = transactions.map((t) =>
     t.category === "Other" && aiMap[t.description]
       ? { ...t, category: aiMap[t.description] }
       : t
   );
+  return { transactions: updated, status: "ok" };
 }
